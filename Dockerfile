@@ -12,7 +12,7 @@ WORKDIR /app
 
 # Install deps (layer-cached separately from source)
 COPY package*.json ./
-RUN npm ci --include=dev
+RUN npm ci
 
 # Copy source
 COPY . .
