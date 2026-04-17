@@ -89,7 +89,6 @@ export const makeRenderQueue = ({
         codec: "h264",
         crf: job.data.crf ?? 23,
         concurrency: 1,
-        chromiumOptions: { gl: "swiftshader" },
         onProgress: ({ progress }) => {
           jobs.set(jobId, { status: "in-progress", progress, cancel, data: job.data });
         },

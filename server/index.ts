@@ -186,7 +186,7 @@ function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
       brandName = "clipmotion.ai",
       webhookUrl,
       generationId,
-      sceneDuration = 90,
+      sceneDuration = 60,
     } = req.body ?? {};
 
     if (!prompt) {
@@ -202,12 +202,19 @@ function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
       { imageUrl: "https://images.unsplash.com/photo-1620641788421-7a1c342ea42e?w=1920&q=80", caption: brandName, durationInFrames: sceneDuration, panDirection: "zoom-out" },
     ];
 
+    // Render at 960×540 (half of 1920×1080) to stay within 512MB RAM on free tier.
+    // Each frame is 4× smaller → Chrome stays well under the OOM threshold.
+    const renderWidth  = 960;
+    const renderHeight = 540;
+
     // Create pending job immediately — caller gets a real jobId to poll
     const jobId = queue.createPendingJob({
       compositionId: "KenBurnsVideo",
       inputProps: { scenes: fallbackScenes, title, brandName, accentColor },
       webhookUrl,
       format: "mp4",
+      width: renderWidth,
+      height: renderHeight,
       meta: { generationId },
     });
 
