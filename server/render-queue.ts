@@ -5,135 +5,134 @@ import {
 } from "@remotion/renderer";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
+import https from "node:https";
+import http from "node:http";
+import { isStorageConfigured, uploadAndClean } from "./storage";
 
-interface JobData {
-  titleText: string;
+export interface RenderJobData {
+  compositionId: string;
+  inputProps: Record<string, unknown>;
+  webhookUrl?: string;
+  format?: "mp4" | "webm" | "gif";
+  crf?: number;       // H.264 CRF: lower = better quality. Default 18
+  width?: number;
+  height?: number;
+  meta?: Record<string, unknown>;
 }
 
 type JobState =
-  | {
-      status: "queued";
-      data: JobData;
-      cancel: () => void;
-    }
-  | {
-      status: "in-progress";
-      progress: number;
-      data: JobData;
-      cancel: () => void;
-    }
-  | {
-      status: "completed";
-      videoUrl: string;
-      data: JobData;
-    }
-  | {
-      status: "failed";
-      error: Error;
-      data: JobData;
-    };
+  | { status: "queued";       data: RenderJobData; cancel: () => void }
+  | { status: "in-progress";  progress: number; data: RenderJobData; cancel: () => void }
+  | { status: "completed";    videoUrl: string; data: RenderJobData }
+  | { status: "failed";       error: string; data: RenderJobData };
 
-const compositionId = "HelloWorld";
+function postWebhook(url: string, body: object) {
+  try {
+    const payload = JSON.stringify(body);
+    const parsed = new URL(url);
+    const mod = parsed.protocol === "https:" ? https : http;
+    const req = mod.request(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(payload) },
+    });
+    req.write(payload);
+    req.end();
+  } catch (_) {}
+}
 
 export const makeRenderQueue = ({
   port,
   serveUrl,
   rendersDir,
+  concurrency = 2,
 }: {
   port: number;
   serveUrl: string;
   rendersDir: string;
+  concurrency?: number;
 }) => {
   const jobs = new Map<string, JobState>();
-  let queue: Promise<unknown> = Promise.resolve();
+  let activeRenders = 0;
+  const pending: string[] = [];
 
   const processRender = async (jobId: string) => {
-    const job = jobs.get(jobId);
-    if (!job) {
-      throw new Error(`Render job ${jobId} not found`);
-    }
-
+    activeRenders++;
+    const job = jobs.get(jobId)!;
     const { cancel, cancelSignal } = makeCancelSignal();
 
-    jobs.set(jobId, {
-      progress: 0,
-      status: "in-progress",
-      cancel: cancel,
-      data: job.data,
-    });
+    jobs.set(jobId, { status: "in-progress", progress: 0, cancel, data: job.data });
+
+    const outputPath = path.join(rendersDir, `${jobId}.mp4`);
 
     try {
-      const inputProps = {
-        titleText: job.data.titleText,
-      };
-
-      const composition = await selectComposition({
+      let composition = await selectComposition({
         serveUrl,
-        id: compositionId,
-        inputProps,
+        id: job.data.compositionId,
+        inputProps: job.data.inputProps,
       });
+
+      // Override dimensions for reel/square/custom formats
+      if (job.data.width || job.data.height) {
+        composition = {
+          ...composition,
+          width:  job.data.width  ?? composition.width,
+          height: job.data.height ?? composition.height,
+        };
+      }
 
       await renderMedia({
         cancelSignal,
         serveUrl,
         composition,
-        inputProps,
+        inputProps: job.data.inputProps,
         codec: "h264",
-        onProgress: (progress) => {
-          console.info(`${jobId} render progress:`, progress.progress);
-          jobs.set(jobId, {
-            progress: progress.progress,
-            status: "in-progress",
-            cancel: cancel,
-            data: job.data,
-          });
+        crf: job.data.crf ?? 18,
+        onProgress: ({ progress }) => {
+          jobs.set(jobId, { status: "in-progress", progress, cancel, data: job.data });
         },
-        outputLocation: path.join(rendersDir, `${jobId}.mp4`),
+        outputLocation: outputPath,
       });
 
-      jobs.set(jobId, {
-        status: "completed",
-        videoUrl: `http://localhost:${port}/renders/${jobId}.mp4`,
-        data: job.data,
-      });
-    } catch (error) {
-      console.error(error);
-      jobs.set(jobId, {
-        status: "failed",
-        error: error as Error,
-        data: job.data,
-      });
+      // Upload to Supabase Storage if configured (Render.com has ephemeral disk)
+      let videoUrl: string;
+      if (isStorageConfigured()) {
+        const fileName = `${jobId}.mp4`;
+        videoUrl = await uploadAndClean(outputPath, fileName, true);
+      } else {
+        videoUrl = `http://localhost:${port}/renders/${jobId}.mp4`;
+      }
+
+      jobs.set(jobId, { status: "completed", videoUrl, data: job.data });
+
+      if (job.data.webhookUrl) {
+        postWebhook(job.data.webhookUrl, { jobId, status: "completed", videoUrl });
+      }
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err);
+      jobs.set(jobId, { status: "failed", error, data: job.data });
+      if (job.data.webhookUrl) {
+        postWebhook(job.data.webhookUrl, { jobId, status: "failed", error });
+      }
+    } finally {
+      activeRenders--;
+      drainQueue();
     }
   };
 
-  const queueRender = async ({
-    jobId,
-    data,
-  }: {
-    jobId: string;
-    data: JobData;
-  }) => {
-    jobs.set(jobId, {
-      status: "queued",
-      data,
-      cancel: () => {
-        jobs.delete(jobId);
-      },
-    });
+  function drainQueue() {
+    while (activeRenders < concurrency && pending.length > 0) {
+      const nextId = pending.shift()!;
+      if (jobs.has(nextId)) processRender(nextId);
+    }
+  }
 
-    queue = queue.then(() => processRender(jobId));
-  };
-
-  function createJob(data: JobData) {
+  function createJob(data: RenderJobData): string {
     const jobId = randomUUID();
-
-    queueRender({ jobId, data });
-
+    jobs.set(jobId, { status: "queued", data, cancel: () => jobs.delete(jobId) });
+    pending.push(jobId);
+    drainQueue();
     return jobId;
   }
 
-  return {
-    createJob,
-    jobs,
-  };
+  return { createJob, jobs };
 };

@@ -1,41 +1,36 @@
-FROM node:lts-bookworm
+FROM node:20-bookworm-slim
 
-
-# Install dependencies required for chromium
-RUN apt-get update && apt-get install -y \
-  libnss3 \
-  libdbus-1-3 \
-  libatk1.0-0 \
-  libgbm-dev \
-  libasound2 \
-  libxrandr2 \
-  libxkbcommon-dev \
-  libxfixes3 \
-  libxcomposite1 \
-  libxdamage1 \
-  libatk-bridge2.0-0 \
-  libcups2
-
+# System deps: Chromium + FFmpeg + espeak-ng (Linux TTS fallback)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  libnss3 libdbus-1-3 libatk1.0-0 libgbm-dev libasound2 \
+  libxrandr2 libxkbcommon-dev libxfixes3 libxcomposite1 \
+  libxdamage1 libatk-bridge2.0-0 libcups2 \
+  ffmpeg espeak-ng \
+  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
+# Install deps (layer-cached separately from source)
 COPY package*.json ./
+RUN npm ci --include=dev
 
-RUN npm install
-
+# Copy source
 COPY . .
 
-RUN mkdir -p renders
-
-# Install browser
+# Install Remotion headless browser
 RUN npx remotion browser ensure
 
-# Bundle the Remotion composition
-RUN npx remotion bundle
-# By default, bundle command will create "build" directory with the bundle
-ENV REMOTION_SERVE_URL=build
+# Pre-bundle Remotion composition → /app/build
+RUN npx remotion bundle remotion/index.ts --out build
+
+# Runtime directories
+RUN mkdir -p renders ai-assets
 
 ENV NODE_ENV=production
+ENV REMOTION_SERVE_URL=build
+ENV PORT=3000
+ENV CONCURRENCY=2
 
-# Start the server
-CMD ["npm", "start"]
+EXPOSE 3000
+
+CMD ["npx", "tsx", "server/index.ts"]

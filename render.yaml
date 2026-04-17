@@ -1,0 +1,29 @@
+# Render.com service configuration
+# Deploy at: https://dashboard.render.com/select-repo
+services:
+  - type: web
+    name: clipmotion-render
+    runtime: docker
+    plan: starter          # 512MB RAM — upgrade to "standard" (2GB) for heavy load
+    healthCheckPath: /health
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: PORT
+        value: 3000
+      - key: CONCURRENCY
+        value: 2
+      - key: REMOTION_SERVE_URL
+        value: build
+      # Set these in Render.com dashboard (encrypted secrets):
+      - key: HF_TOKEN
+        sync: false
+      - key: PEXELS_API_KEY
+        sync: false
+      - key: PIXABAY_API_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: STORAGE_BUCKET
+        value: video-renders

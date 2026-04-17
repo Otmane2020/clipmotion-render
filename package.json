@@ -6,14 +6,29 @@
   "license": "UNLICENSED",
   "private": true,
   "dependencies": {
+    "@code-hike/lighter": "^1.0.3",
+    "@huggingface/inference": "^4.13.15",
+    "@react-three/fiber": "^9.5.0",
+    "@remotion/animation-utils": "^4.0.427",
     "@remotion/bundler": "4.0.427",
+    "@remotion/captions": "^4.0.427",
     "@remotion/cli": "4.0.427",
+    "@remotion/google-fonts": "^4.0.427",
+    "@remotion/layout-utils": "^4.0.427",
+    "@remotion/media": "^4.0.427",
     "@remotion/renderer": "4.0.427",
+    "@remotion/three": "^4.0.427",
     "@remotion/zod-types": "4.0.427",
+    "codehike": "^1.0.7",
+    "dotenv": "^17.4.2",
     "express": "5.1.0",
+    "msedge-tts": "^2.0.5",
+    "polished": "^4.3.1",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "remotion": "4.0.427",
+    "three": "^0.183.1",
+    "twoslash-cdn": "^0.3.6",
     "zod": "4.3.6"
   },
   "devDependencies": {
@@ -28,9 +43,9 @@
     "typescript": "5.9.3"
   },
   "scripts": {
-    "build": "remotion bundle",
+    "build": "remotion bundle remotion/index.ts --out build",
     "dev": "tsx watch server",
-    "start": "tsx server",
+    "start": "tsx server/index.ts",
     "lint": "eslint . && tsc",
     "remotion:upgrade": "remotion upgrade",
     "remotion:studio": "remotion studio"
