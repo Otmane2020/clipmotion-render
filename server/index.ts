@@ -12,7 +12,7 @@ import { mkdirSync } from "node:fs";
 const {
   PORT = 3000,
   REMOTION_SERVE_URL,
-  CONCURRENCY = "2",
+  CONCURRENCY = "1",
   HF_TOKEN,
 } = process.env;
 
