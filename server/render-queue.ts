@@ -65,6 +65,9 @@ export const makeRenderQueue = ({
 
     const outputPath = path.join(rendersDir, `${jobId}.mp4`);
 
+    // Force GC to free FLUX image buffers before Chrome starts
+    if (typeof (global as any).gc === "function") (global as any).gc();
+
     try {
       let composition = await selectComposition({
         serveUrl,
