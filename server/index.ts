@@ -194,9 +194,26 @@ function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
       return;
     }
 
-    res.status(202).json({ status: "generating", message: "Generating AI images with FLUX.1..." });
+    // Fallback scenes used immediately so we have a jobId to return right away
+    const fps = 30;
+    const fallbackScenes = [
+      { imageUrl: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1920&q=80", caption: title, durationInFrames: sceneDuration, panDirection: "zoom-in" },
+      { imageUrl: "https://images.unsplash.com/photo-1535223289827-42f1e9919769?w=1920&q=80", caption: "Created with AI", durationInFrames: sceneDuration, panDirection: "left" },
+      { imageUrl: "https://images.unsplash.com/photo-1620641788421-7a1c342ea42e?w=1920&q=80", caption: brandName, durationInFrames: sceneDuration, panDirection: "zoom-out" },
+    ];
 
-    // Génération asynchrone
+    // Create pending job immediately — caller gets a real jobId to poll
+    const jobId = queue.createPendingJob({
+      compositionId: "KenBurnsVideo",
+      inputProps: { scenes: fallbackScenes, title, brandName, accentColor },
+      webhookUrl,
+      format: "mp4",
+      meta: { generationId },
+    });
+
+    res.status(202).json({ jobId, status: "queued", message: "Generating AI images with FLUX.1..." });
+
+    // Generate FLUX images in background, then resolve the pending job
     setImmediate(async () => {
       try {
         console.info(`[AI-VIDEO] Generating scenes for: "${prompt}"`);
@@ -212,46 +229,18 @@ function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
           serverPort: Number(PORT),
         });
 
-        const jobId = queue.createJob({
-          compositionId: "KenBurnsVideo",
-          inputProps: {
-            scenes: result.scenes,
-            title: result.title,
-            brandName: result.brandName,
-            accentColor: result.accentColor,
-          },
-          webhookUrl,
-          format: "mp4",
-          meta: { generationId },
+        const resolved = queue.resolveJob(jobId, {
+          scenes: result.scenes,
+          title: result.title,
+          brandName: result.brandName,
+          accentColor: result.accentColor,
         });
 
-        console.info(`[AI-VIDEO] Render job created: ${jobId}`);
-
-        // Notifier immédiatement avec le jobId via webhook
-        if (webhookUrl) {
-          try {
-            await fetch(webhookUrl, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ jobId, status: "rendering", generationId }),
-            });
-          } catch {}
-        }
+        console.info(`[AI-VIDEO] Render job resolved: ${jobId} (used FLUX: ${resolved})`);
       } catch (err) {
-        console.error("[AI-VIDEO] Error:", err);
-        if (webhookUrl) {
-          try {
-            await fetch(webhookUrl, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                status: "failed",
-                error: err instanceof Error ? err.message : String(err),
-                generationId,
-              }),
-            });
-          } catch {}
-        }
+        console.error("[AI-VIDEO] FLUX failed, falling back to Unsplash images:", err);
+        // Resolve with fallback scenes so the video still renders
+        queue.resolveJob(jobId, { scenes: fallbackScenes, title, brandName, accentColor });
       }
     });
   });

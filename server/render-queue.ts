@@ -21,6 +21,7 @@ export interface RenderJobData {
 }
 
 type JobState =
+  | { status: "pending";      data: RenderJobData; cancel: () => void }
   | { status: "queued";       data: RenderJobData; cancel: () => void }
   | { status: "in-progress";  progress: number; data: RenderJobData; cancel: () => void }
   | { status: "completed";    videoUrl: string; data: RenderJobData }
@@ -134,5 +135,23 @@ export const makeRenderQueue = ({
     return jobId;
   }
 
-  return { createJob, jobs };
+  // Create a job in "pending" state — won't render until resolveJob() is called
+  function createPendingJob(data: RenderJobData): string {
+    const jobId = randomUUID();
+    jobs.set(jobId, { status: "pending", data, cancel: () => jobs.delete(jobId) });
+    return jobId;
+  }
+
+  // Transition a pending job to queued (with updated inputProps) and start rendering
+  function resolveJob(jobId: string, inputProps: Record<string, unknown>): boolean {
+    const job = jobs.get(jobId);
+    if (!job || job.status !== "pending") return false;
+    const updatedData = { ...job.data, inputProps };
+    jobs.set(jobId, { status: "queued", data: updatedData, cancel: () => jobs.delete(jobId) });
+    pending.push(jobId);
+    drainQueue();
+    return true;
+  }
+
+  return { createJob, createPendingJob, resolveJob, jobs };
 };
