@@ -30,7 +30,7 @@ ENV NODE_ENV=production
 ENV REMOTION_SERVE_URL=build
 ENV PORT=3000
 ENV CONCURRENCY=1
-ENV NODE_OPTIONS="--max-old-space-size=256 --expose-gc"
+ENV NODE_OPTIONS="--max-old-space-size=128 --expose-gc"
 
 EXPOSE 3000
 

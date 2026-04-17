@@ -186,7 +186,7 @@ function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
       brandName = "clipmotion.ai",
       webhookUrl,
       generationId,
-      sceneDuration = 45,
+      sceneDuration = 30,
     } = req.body ?? {};
 
     if (!prompt) {
