@@ -29,7 +29,8 @@ RUN mkdir -p renders ai-assets
 ENV NODE_ENV=production
 ENV REMOTION_SERVE_URL=build
 ENV PORT=3000
-ENV CONCURRENCY=2
+ENV CONCURRENCY=1
+ENV NODE_OPTIONS=--max-old-space-size=400
 
 EXPOSE 3000
 

@@ -87,7 +87,8 @@ export const makeRenderQueue = ({
         composition,
         inputProps: job.data.inputProps,
         codec: "h264",
-        crf: job.data.crf ?? 18,
+        crf: job.data.crf ?? 23,
+        concurrencyPerLambda: 1,
         onProgress: ({ progress }) => {
           jobs.set(jobId, { status: "in-progress", progress, cancel, data: job.data });
         },
