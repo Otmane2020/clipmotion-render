@@ -94,6 +94,11 @@ export const makeRenderQueue = ({
         concurrency: 1,
         imageFormat: "jpeg",
         jpegQuality: 80,
+        chromiumOptions: {
+          gl: "swiftshader",
+          disableWebSecurity: false,
+          ignoreCertificateErrors: false,
+        },
         onProgress: ({ progress }) => {
           jobs.set(jobId, { status: "in-progress", progress, cancel, data: job.data });
         },

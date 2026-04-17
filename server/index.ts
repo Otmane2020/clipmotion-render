@@ -281,9 +281,9 @@ function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
       secondaryColor = "#ff6b6b",
       brandName = "clipmotion.ai",
       useAiImages = false,
-      sceneDuration = 90,
-      videoFormat = "landscape",  // ← NEW
-      quality = "high",           // ← NEW
+      sceneDuration = 20,
+      videoFormat = "landscape",
+      quality = "medium",
       webhookUrl,
       generationId,
     } = req.body ?? {};
@@ -295,11 +295,11 @@ function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
 
     // Resolve dimensions
     const FORMAT_MAP: Record<string, { width: number; height: number }> = {
-      landscape: { width: 1920, height: 1080 },
-      reel:      { width: 1080, height: 1920 },
-      mobile:    { width: 1080, height: 1920 },
-      vertical:  { width: 1080, height: 1920 },
-      square:    { width: 1080, height: 1080 },
+      landscape: { width: 1280, height: 720 },
+      reel:      { width: 720, height: 1280 },
+      mobile:    { width: 720, height: 1280 },
+      vertical:  { width: 720, height: 1280 },
+      square:    { width: 720, height: 720 },
     };
     const CRF_MAP: Record<string, number> = { high: 16, medium: 22, low: 28 };
     const { width, height } = FORMAT_MAP[videoFormat] ?? FORMAT_MAP.landscape;
