@@ -207,7 +207,7 @@ function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
         console.info(`[AI-VIDEO] Generating scenes for: "${prompt}"`);
 
         // Try FLUX image generation, fall back to Unsplash
-        const SCENE_SEC = 6; // seconds per scene
+        const SCENE_SEC = 4; // seconds per scene (short = faster FFmpeg on low-CPU)
         let ffmpegScenes;
         try {
           const result = await generateAiVideoScenes({
@@ -236,8 +236,8 @@ function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
 
         const outputPath = await renderVideoFFmpeg({
           scenes: ffmpegScenes,
-          width: 1280, height: 720,
-          fps: 25, crf: 23,
+          width: 854, height: 480,   // 480p — zoompan is ~4x faster vs 720p on 0.1 vCPU
+          fps: 25, crf: 26,
           outputDir: rendersDir,
         });
 
