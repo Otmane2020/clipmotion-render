@@ -117,7 +117,8 @@ export async function renderVideoFFmpeg(opts: FFmpegRenderOptions): Promise<stri
     }
 
     // ── 3. Build FFmpeg args ─────────────────────────────────────────────────
-    const args: string[] = ["-hide_banner", "-loglevel", "warning"];
+    // -threads 1 prevents FFmpeg from consuming all vCPU and starving the Node.js event loop
+    const args: string[] = ["-hide_banner", "-loglevel", "warning", "-threads", "1"];
 
     for (let i = 0; i < scenes.length; i++) {
       args.push("-framerate", String(fps), "-loop", "1", "-t", String(scenes[i].duration), "-i", imagePaths[i]);

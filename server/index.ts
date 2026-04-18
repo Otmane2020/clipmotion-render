@@ -236,8 +236,8 @@ function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
 
         const outputPath = await renderVideoFFmpeg({
           scenes: ffmpegScenes,
-          width: 1280, height: 720,  // 720p — OK on Starter 0.5 vCPU
-          fps: 25, crf: 23,
+          width: 640, height: 360,   // 360p — safe on 0.5 vCPU (8x fewer pixels vs 720p)
+          fps: 24, crf: 24,
           outputDir: rendersDir,
         });
 
