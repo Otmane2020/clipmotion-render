@@ -113,10 +113,20 @@ export async function renderVideoFFmpeg(opts: FFmpegRenderOptions): Promise<stri
     const args: string[] = ["-hide_banner", "-loglevel", "warning", "-threads", "1"];
 
     for (let i = 0; i < scenes.length; i++) {
-      const isVideo = scenes[i].type === "video";
-      args.push("-t", String(scenes[i].duration)); // limit to scene duration
-      if (!isVideo) {
-        args.push("-r", String(fps), "-loop", "1"); // still image looped
+      const { type = "image", panDirection = "none" } = scenes[i];
+      const isVideo = type === "video";
+      const usesZoompan = !isVideo && panDirection !== "none";
+
+      if (isVideo) {
+        // Video: limit how much is read from the stream (avoids full download)
+        args.push("-t", String(scenes[i].duration));
+      } else if (usesZoompan) {
+        // Single-frame input for zoompan — zoompan generates exactly d=dFrames output frames
+        // (looping would multiply: 125 input frames × d=125 = 15625 frames = 625s!)
+        args.push("-loop", "1");
+      } else {
+        // Static image: loop for the full scene duration at target fps
+        args.push("-t", String(scenes[i].duration), "-r", String(fps), "-loop", "1");
       }
       args.push("-i", inputSources[i]);
     }
