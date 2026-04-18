@@ -101,9 +101,8 @@ async function searchPixabayVideos(query: string, count = 3): Promise<StockVideo
     const data = await res.json() as any;
     return (data.hits || []).slice(0, count).map((hit: any) => {
       const v = hit.videos ?? {};
-      // Pick smallest variant with width >= 1280 to avoid huge files
-      const sizes = [v.tiny, v.small, v.medium, v.large].filter(Boolean);
-      const good = sizes.find((s: any) => s.width >= 1280) ?? sizes[sizes.length - 1];
+      // Use small variant (640p) to stay within 512MB RAM limit
+      const good = v.small ?? v.tiny ?? v.medium;
       return {
         url: good?.url ?? "",
         type: "video" as const,
