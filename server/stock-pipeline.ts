@@ -174,9 +174,9 @@ export async function fetchStockAssets(
   const hasPixabay = false;
 
   const moodMusic = FREE_MUSIC_BY_MOOD[mood] || FREE_MUSIC_BY_MOOD.cinematic;
-  const musicUrl = pixabayMusic || moodMusic[0];
+  const musicUrl = moodMusic[0];
 
-  console.info(`[STOCK] Music: ${pixabayMusic ? "Pixabay" : "CDN fallback"}`);
+  console.info(`[STOCK] Music: CDN fallback`);
 
   return { videoClips, musicUrl, hasPexels, hasPixabay };
 }
