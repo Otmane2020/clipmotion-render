@@ -59,9 +59,9 @@ function zoompanFilter(dir: string, frames: number, w: number, h: number): strin
     case "zoom-out":
       return `zoompan=z='if(lte(zoom,1.0),1.5,max(1.001,zoom-0.0015))':x='(iw-iw/zoom)/2':y='(ih-ih/zoom)/2':d=${D}:s=${size}`;
     case "left":
-      return `zoompan=z='1.3':x='(iw-iw/zoom)*n/${D}':y='(ih-ih/zoom)/2':d=${D}:s=${size}`;
+      return `zoompan=z='1.3':x='(iw-iw/zoom)*on/${D}':y='(ih-ih/zoom)/2':d=${D}:s=${size}`;
     case "right":
-      return `zoompan=z='1.3':x='(iw-iw/zoom)*(1-n/${D})':y='(ih-ih/zoom)/2':d=${D}:s=${size}`;
+      return `zoompan=z='1.3':x='(iw-iw/zoom)*(1-on/${D})':y='(ih-ih/zoom)/2':d=${D}:s=${size}`;
     default:
       return `zoompan=z='1.0':x='0':y='0':d=${D}:s=${size}`;
   }
