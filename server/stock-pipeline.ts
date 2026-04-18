@@ -101,8 +101,8 @@ async function searchPixabayVideos(query: string, count = 3): Promise<StockVideo
     const data = await res.json() as any;
     return (data.hits || []).slice(0, count).map((hit: any) => {
       const v = hit.videos ?? {};
-      // Use small variant (640p) to stay within 512MB RAM limit
-      const good = v.small ?? v.tiny ?? v.medium;
+      // tiny (360p) first — FFmpeg streams URL directly, so RAM isn't affected by video size
+      const good = v.tiny ?? v.small ?? v.medium;
       return {
         url: good?.url ?? "",
         type: "video" as const,
@@ -164,14 +164,34 @@ export async function fetchStockAssets(
 ): Promise<StockAssets> {
   const category = detectCategory(prompt);
 
-  // Use Unsplash images only — video clips OOM on 512MB RAM
-  // TODO: re-enable Pixabay/Pexels once we have persistent storage
-  const videoClips: StockVideo[] = (UNSPLASH_FALLBACKS[category] || UNSPLASH_FALLBACKS.default)
-    .slice(0, count)
-    .map((url) => ({ url, type: "image" as const, thumb: url }));
-  console.info(`[STOCK] Unsplash images — ${videoClips.length} clips`);
-  const hasPexels = false;
-  const hasPixabay = false;
+  // Video search: Pixabay → Pexels → Unsplash images
+  // FFmpeg streams video URLs directly (no pre-download) so RAM is not a concern
+  let videoClips: StockVideo[] = [];
+
+  if (PIXABAY_KEY && videoClips.length < count) {
+    const pix = await searchPixabayVideos(prompt, count);
+    videoClips = [...videoClips, ...pix];
+    console.info(`[STOCK] Pixabay videos: ${pix.length}`);
+  }
+
+  if (PEXELS_KEY && videoClips.length < count) {
+    const pex = await searchPexelsVideos(prompt, count - videoClips.length);
+    videoClips = [...videoClips, ...pex];
+    console.info(`[STOCK] Pexels videos: ${pex.length}`);
+  }
+
+  // Fill remaining slots with Unsplash images
+  if (videoClips.length < count) {
+    const needed = count - videoClips.length;
+    const fallback = (UNSPLASH_FALLBACKS[category] || UNSPLASH_FALLBACKS.default)
+      .slice(0, needed)
+      .map((url) => ({ url, type: "image" as const, thumb: url }));
+    videoClips = [...videoClips, ...fallback];
+    console.info(`[STOCK] Unsplash fallback images: ${fallback.length}`);
+  }
+
+  const hasPexels = videoClips.some((v) => v.type === "video");
+  const hasPixabay = hasPexels;
 
   const moodMusic = FREE_MUSIC_BY_MOOD[mood] || FREE_MUSIC_BY_MOOD.cinematic;
   const musicUrl = moodMusic[0];

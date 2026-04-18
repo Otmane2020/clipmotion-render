@@ -74,17 +74,23 @@ export async function renderVideoFFmpeg(opts: FFmpegRenderOptions): Promise<stri
   await fsp.mkdir(tmpDir, { recursive: true });
 
   try {
-    // ── 1. Resolve image files ───────────────────────────────────────────────
-    const imagePaths: string[] = [];
+    // ── 1. Resolve scene inputs ──────────────────────────────────────────────
+    // Videos: pass URL directly to FFmpeg (streams only what it needs — avoids OOM)
+    // Images: download to disk (small JPEG, safe)
+    const inputSources: string[] = [];
     for (let i = 0; i < scenes.length; i++) {
       const scene = scenes[i];
       if (scene.localPath) {
-        imagePaths.push(scene.localPath);
+        inputSources.push(scene.localPath);
       } else if (scene.url) {
-        const ext = scene.type === "video" ? "mp4" : "jpg";
-        const dest = path.join(tmpDir, `scene-${i}.${ext}`);
-        await downloadToFile(scene.url, dest);
-        imagePaths.push(dest);
+        if (scene.type === "video") {
+          // FFmpeg reads the remote stream with -t cap — no full download needed
+          inputSources.push(scene.url);
+        } else {
+          const dest = path.join(tmpDir, `scene-${i}.jpg`);
+          await downloadToFile(scene.url, dest);
+          inputSources.push(dest);
+        }
       } else {
         throw new Error(`Scene ${i}: no url or localPath`);
       }
@@ -112,7 +118,7 @@ export async function renderVideoFFmpeg(opts: FFmpegRenderOptions): Promise<stri
       if (!isVideo) {
         args.push("-r", String(fps), "-loop", "1"); // still image looped
       }
-      args.push("-i", imagePaths[i]);
+      args.push("-i", inputSources[i]);
     }
 
     let nextInputIdx = scenes.length;
