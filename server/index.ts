@@ -379,6 +379,7 @@ function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
         const sceneSec = Math.max(4, Math.round(sceneDuration / 30 * 10) / 10); // frames→sec, min 4s
         const ffmpegScenes = clips.map((c: any) => ({
           url: c.url as string,
+          type: (c.type as "image" | "video") ?? "image",
           caption: (c.caption as string) || title,
           duration: sceneSec,
           panDirection: (c.panDirection as any) ?? "zoom-in",
@@ -399,7 +400,8 @@ function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
         if (isStorageConfigured()) {
           videoUrl = await uploadAndClean(outputPath, `${promoJobId}.mp4`, true);
         } else {
-          videoUrl = `http://localhost:${PORT}/renders/${path.basename(outputPath)}`;
+          const publicHost = process.env.PUBLIC_URL || `http://localhost:${PORT}`;
+          videoUrl = `${publicHost}/renders/${path.basename(outputPath)}`;
         }
 
         queue.jobs.set(promoJobId, { status: "completed", videoUrl, data: promoDummyData });
@@ -413,16 +415,14 @@ function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
           }).catch(() => {});
         }
       } catch (err) {
-        console.error("[PROMO] Pipeline error:", err);
+        const errMsg = err instanceof Error ? err.message : String(err);
+        console.error("[PROMO] Pipeline error:", errMsg);
+        queue.jobs.set(promoJobId, { status: "failed", error: errMsg, data: promoDummyData });
         if (webhookUrl) {
           await fetch(webhookUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              status: "failed",
-              error: err instanceof Error ? err.message : String(err),
-              generationId,
-            }),
+            body: JSON.stringify({ status: "failed", error: errMsg, generationId }),
           }).catch(() => {});
         }
       }
