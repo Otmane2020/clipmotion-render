@@ -254,6 +254,8 @@ export async function renderVideoFFmpeg(opts: FFmpegRenderOptions): Promise<stri
     // Explicit color metadata — Chrome refuses to play h264 with color_range=unknown
     args.push("-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-color_range", "tv");
     if (audioMap) args.push("-c:a", "aac", "-b:a", "128k");
+    // Hard-limit container to video duration — prevents 75s audio track bloating the moov atom
+    args.push("-t", totalDuration.toFixed(3));
     args.push("-movflags", "+faststart", "-y", outputPath);
 
     console.info(
