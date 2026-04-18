@@ -164,41 +164,14 @@ export async function fetchStockAssets(
 ): Promise<StockAssets> {
   const category = detectCategory(prompt);
 
-  // Run all searches in parallel
-  const [pixabayVideos, pexelsVideos, pixabayMusic] = await Promise.all([
-    searchPixabayVideos(prompt, count),
-    searchPexelsVideos(prompt, count),
-    searchPixabayMusic(mood),
-  ]);
-
-  let videoClips: StockVideo[];
-  let hasPexels = false;
-  let hasPixabay = false;
-
-  if (pixabayVideos.length > 0) {
-    // Pixabay videos first (free, no watermark)
-    videoClips = pixabayVideos;
-    hasPixabay = true;
-    console.info(`[STOCK] Pixabay videos — ${videoClips.length} clips`);
-  } else if (pexelsVideos.length > 0) {
-    // Pexels as second option
-    videoClips = pexelsVideos;
-    hasPexels = true;
-    console.info(`[STOCK] Pexels videos — ${videoClips.length} clips`);
-  } else {
-    // Fallback: Pixabay images, then Unsplash
-    const pixabayImgs = await searchPixabayImages(prompt, count);
-    if (pixabayImgs.length > 0) {
-      videoClips = pixabayImgs;
-      hasPixabay = true;
-      console.info(`[STOCK] Pixabay images fallback — ${videoClips.length} clips`);
-    } else {
-      videoClips = (UNSPLASH_FALLBACKS[category] || UNSPLASH_FALLBACKS.default)
-        .slice(0, count)
-        .map((url) => ({ url, type: "image" as const, thumb: url }));
-      console.info(`[STOCK] Unsplash fallback — ${videoClips.length} clips`);
-    }
-  }
+  // Use Unsplash images only — video clips OOM on 512MB RAM
+  // TODO: re-enable Pixabay/Pexels once we have persistent storage
+  const videoClips: StockVideo[] = (UNSPLASH_FALLBACKS[category] || UNSPLASH_FALLBACKS.default)
+    .slice(0, count)
+    .map((url) => ({ url, type: "image" as const, thumb: url }));
+  console.info(`[STOCK] Unsplash images — ${videoClips.length} clips`);
+  const hasPexels = false;
+  const hasPixabay = false;
 
   const moodMusic = FREE_MUSIC_BY_MOOD[mood] || FREE_MUSIC_BY_MOOD.cinematic;
   const musicUrl = pixabayMusic || moodMusic[0];
