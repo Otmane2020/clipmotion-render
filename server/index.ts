@@ -4,8 +4,11 @@ import { makeRenderQueue } from "./render-queue";
 import { generateAiVideoScenes } from "./ai-pipeline";
 import { generateVoiceOver, splitScriptToScenes } from "./voice-pipeline";
 import { fetchStockAssets } from "./stock-pipeline";
+import { renderVideoFFmpeg } from "./ffmpeg-pipeline";
+import { isStorageConfigured, uploadAndClean } from "./storage";
 import { bundle } from "@remotion/bundler";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import { ensureBrowser } from "@remotion/renderer";
 import { mkdirSync } from "node:fs";
 
@@ -175,8 +178,8 @@ function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
     res.json({ message: "Cancelled" });
   });
 
-  // ── POST /generate-ai-video — Pipeline FLUX + Remotion ─────────────────────
-  // Corps: { prompt, title, style, accentColor, brandName, webhookUrl, generationId }
+  // ── POST /generate-ai-video — FLUX images + FFmpeg (no Chrome) ─────────────
+  // Body: { prompt, title, style, accentColor, brandName, webhookUrl, generationId }
   app.post("/generate-ai-video", async (req, res) => {
     const {
       prompt,
@@ -186,7 +189,6 @@ function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
       brandName = "clipmotion.ai",
       webhookUrl,
       generationId,
-      sceneDuration = 30,
     } = req.body ?? {};
 
     if (!prompt) {
@@ -194,60 +196,79 @@ function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
       return;
     }
 
-    // Fallback scenes used immediately so we have a jobId to return right away
-    const fps = 30;
-    const fallbackScenes = [
-      { imageUrl: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1920&q=80", caption: title, durationInFrames: sceneDuration, panDirection: "zoom-in" },
-      { imageUrl: "https://images.unsplash.com/photo-1535223289827-42f1e9919769?w=1920&q=80", caption: "Created with AI", durationInFrames: sceneDuration, panDirection: "left" },
-      { imageUrl: "https://images.unsplash.com/photo-1620641788421-7a1c342ea42e?w=1920&q=80", caption: brandName, durationInFrames: sceneDuration, panDirection: "zoom-out" },
-    ];
-
-    // Render at 960×540 (half of 1920×1080) to stay within 512MB RAM on free tier.
-    // Each frame is 4× smaller → Chrome stays well under the OOM threshold.
-    const renderWidth  = 960;
-    const renderHeight = 540;
-
-    // Create pending job immediately — caller gets a real jobId to poll
-    const jobId = queue.createPendingJob({
-      compositionId: "KenBurnsVideo",
-      inputProps: { scenes: fallbackScenes, title, brandName, accentColor },
-      webhookUrl,
-      format: "mp4",
-      width: renderWidth,
-      height: renderHeight,
-      meta: { generationId },
-    });
+    const jobId = randomUUID();
+    const dummyData = { compositionId: "FFmpegRender", inputProps: {}, webhookUrl };
+    queue.jobs.set(jobId, { status: "in-progress", progress: 0.05, cancel: () => {}, data: dummyData });
 
     res.status(202).json({ jobId, status: "queued", message: "Generating AI images with FLUX.1..." });
 
-    // Generate FLUX images in background, then resolve the pending job
     setImmediate(async () => {
       try {
         console.info(`[AI-VIDEO] Generating scenes for: "${prompt}"`);
 
-        const result = await generateAiVideoScenes({
-          prompt,
-          title,
-          style,
-          accentColor,
-          brandName,
-          sceneDuration,
-          outputDir: aiAssetsDir,
-          serverPort: Number(PORT),
+        // Try FLUX image generation, fall back to Unsplash
+        const SCENE_SEC = 6; // seconds per scene
+        let ffmpegScenes;
+        try {
+          const result = await generateAiVideoScenes({
+            prompt, title, style, accentColor, brandName,
+            sceneDuration: Math.round(SCENE_SEC * 30), // kept in frames for ai-pipeline compat
+            outputDir: aiAssetsDir,
+            serverPort: Number(PORT),
+          });
+          ffmpegScenes = result.scenes.map((s) => ({
+            localPath: path.join(aiAssetsDir, path.basename(s.imageUrl.split("/ai-assets/")[1] ?? s.imageUrl)),
+            caption: s.caption,
+            duration: SCENE_SEC,
+            panDirection: s.panDirection,
+          }));
+          console.info(`[AI-VIDEO] FLUX images ready: ${result.scenes.length} scenes`);
+        } catch (fluxErr) {
+          console.warn("[AI-VIDEO] FLUX failed, using Unsplash fallback:", (fluxErr as Error).message);
+          ffmpegScenes = [
+            { url: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1280&q=80", caption: title, duration: SCENE_SEC, panDirection: "zoom-in" as const },
+            { url: "https://images.unsplash.com/photo-1535223289827-42f1e9919769?w=1280&q=80", caption: "Created with AI", duration: SCENE_SEC, panDirection: "left" as const },
+            { url: "https://images.unsplash.com/photo-1620641788421-7a1c342ea42e?w=1280&q=80", caption: brandName, duration: SCENE_SEC, panDirection: "zoom-out" as const },
+          ];
+        }
+
+        queue.jobs.set(jobId, { status: "in-progress", progress: 0.4, cancel: () => {}, data: dummyData });
+
+        const outputPath = await renderVideoFFmpeg({
+          scenes: ffmpegScenes,
+          width: 1280, height: 720,
+          fps: 25, crf: 23,
+          outputDir: rendersDir,
         });
 
-        const resolved = queue.resolveJob(jobId, {
-          scenes: result.scenes,
-          title: result.title,
-          brandName: result.brandName,
-          accentColor: result.accentColor,
-        });
+        let videoUrl: string;
+        if (isStorageConfigured()) {
+          videoUrl = await uploadAndClean(outputPath, `${jobId}.mp4`, true);
+        } else {
+          videoUrl = `http://localhost:${PORT}/renders/${path.basename(outputPath)}`;
+        }
 
-        console.info(`[AI-VIDEO] Render job resolved: ${jobId} (used FLUX: ${resolved})`);
+        queue.jobs.set(jobId, { status: "completed", videoUrl, data: dummyData });
+        console.info(`[AI-VIDEO] Done: ${videoUrl}`);
+
+        if (webhookUrl) {
+          await fetch(webhookUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ jobId, status: "completed", videoUrl, generationId }),
+          }).catch(() => {});
+        }
       } catch (err) {
-        console.error("[AI-VIDEO] FLUX failed, falling back to Unsplash images:", err);
-        // Resolve with fallback scenes so the video still renders
-        queue.resolveJob(jobId, { scenes: fallbackScenes, title, brandName, accentColor });
+        const error = err instanceof Error ? err.message : String(err);
+        console.error("[AI-VIDEO] Pipeline error:", error);
+        queue.jobs.set(jobId, { status: "failed", error, data: dummyData });
+        if (webhookUrl) {
+          await fetch(webhookUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ jobId, status: "failed", error, generationId }),
+          }).catch(() => {});
+        }
       }
     });
   });
@@ -352,30 +373,44 @@ function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
 
         const totalFrames = 50 + clips.length * sceneDuration;
 
-        // ── 4. Render ──
-        const jobId = queue.createJob({
-          compositionId: "PromoVideo",
-          inputProps: {
-            clips, title, subtitle, brandName, accentColor, secondaryColor, style,
-            musicUrl: stockAssets.musicUrl,
-            musicVolume: 0.12,
-            voiceUrl: voiceFilename ? `http://localhost:${PORT}/ai-assets/${voiceFilename}` : undefined,
-          },
-          webhookUrl,
-          format: "mp4",
-          width,
-          height,
-          crf,
-          meta: { generationId, totalFrames, videoFormat },
+        // ── 4. Render (FFmpeg — no Chrome, fits in 512MB) ──
+        const fps = 25;
+        const sceneSec = Math.max(4, Math.round(sceneDuration / 30 * 10) / 10); // frames→sec, min 4s
+        const ffmpegScenes = clips.map((c: any) => ({
+          url: c.url as string,
+          caption: (c.caption as string) || title,
+          duration: sceneSec,
+          panDirection: (c.panDirection as any) ?? "zoom-in",
+        }));
+
+        const promoJobId = randomUUID();
+        const promoDummyData = { compositionId: "FFmpegRender", inputProps: {}, webhookUrl };
+        queue.jobs.set(promoJobId, { status: "in-progress", progress: 0.5, cancel: () => {}, data: promoDummyData });
+
+        const outputPath = await renderVideoFFmpeg({
+          scenes: ffmpegScenes,
+          musicUrl: stockAssets.musicUrl || undefined,
+          musicVolume: 0.12,
+          voicePath: voiceFilename ? path.join(aiAssetsDir, voiceFilename) : undefined,
+          width, height, fps, crf,
+          outputDir: rendersDir,
         });
 
-        console.info(`[PROMO] ✅ Render job: ${jobId} | Voice: ${!!voiceFilename} | Music: ${stockAssets.musicUrl.slice(0, 40)}`);
+        let videoUrl: string;
+        if (isStorageConfigured()) {
+          videoUrl = await uploadAndClean(outputPath, `${promoJobId}.mp4`, true);
+        } else {
+          videoUrl = `http://localhost:${PORT}/renders/${path.basename(outputPath)}`;
+        }
+
+        queue.jobs.set(promoJobId, { status: "completed", videoUrl, data: promoDummyData });
+        console.info(`[PROMO] ✅ Done: ${videoUrl} | Voice: ${!!voiceFilename} | Music: ${(stockAssets.musicUrl || "").slice(0, 40)}`);
 
         if (webhookUrl) {
           await fetch(webhookUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ jobId, status: "rendering", generationId }),
+            body: JSON.stringify({ jobId: promoJobId, status: "completed", videoUrl, generationId }),
           }).catch(() => {});
         }
       } catch (err) {
