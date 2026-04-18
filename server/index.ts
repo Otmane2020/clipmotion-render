@@ -236,8 +236,8 @@ function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
 
         const outputPath = await renderVideoFFmpeg({
           scenes: ffmpegScenes,
-          width: 854, height: 480,   // 480p — zoompan is ~4x faster vs 720p on 0.1 vCPU
-          fps: 25, crf: 26,
+          width: 1280, height: 720,  // 720p — OK on Starter 0.5 vCPU
+          fps: 25, crf: 23,
           outputDir: rendersDir,
         });
 

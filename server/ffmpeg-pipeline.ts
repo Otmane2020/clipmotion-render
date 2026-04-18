@@ -190,7 +190,7 @@ export async function renderVideoFFmpeg(opts: FFmpegRenderOptions): Promise<stri
     args.push("-map", "[vout]");
     if (audioMap) args.push("-map", audioMap);
 
-    args.push("-c:v", "libx264", "-crf", String(crf), "-preset", "ultrafast");
+    args.push("-c:v", "libx264", "-crf", String(crf), "-preset", "fast");
     if (audioMap) args.push("-c:a", "aac", "-b:a", "128k");
     args.push("-movflags", "+faststart", "-y", outputPath);
 
