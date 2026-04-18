@@ -166,10 +166,13 @@ export async function renderVideoFFmpeg(opts: FFmpegRenderOptions): Promise<stri
       }
 
       if (kbFilter) {
-        // Overscan → zoompan (Ken Burns) → yuv420p
+        // Overscan → zoompan (Ken Burns) → range fix → yuv420p
+        // zoompan internally uses yuvj420p (full range); scale converts values to TV/limited range
+        // so Chrome/browsers can decode correctly without swscaler color range warnings
         parts.push(
           `[${i}:v]${trimPart}scale=${oW}:${oH}:force_original_aspect_ratio=increase,` +
-            `crop=${oW}:${oH},setsar=1${kbFilter},format=yuv420p[sc${i}]`,
+            `crop=${oW}:${oH},setsar=1${kbFilter},` +
+            `scale=iw:ih:in_range=full:out_range=tv,format=yuv420p[sc${i}]`,
         );
       } else {
         // Static (video clips or panDirection=none)
