@@ -15,10 +15,11 @@ const FONT_CANDIDATES = [
 const FONT_PATH = FONT_CANDIDATES.find((f) => fs.existsSync(f));
 
 export interface FFmpegScene {
-  url?: string;        // Remote URL to download
-  localPath?: string;  // Already-local file (skips download)
+  url?: string;                          // Remote URL to download
+  localPath?: string;                    // Already-local file (skips download)
+  type?: "image" | "video";             // Default "image"
   caption?: string;
-  duration: number;    // Seconds
+  duration: number;                      // Seconds
   panDirection?: "zoom-in" | "zoom-out" | "left" | "right" | "none";
 }
 
@@ -105,7 +106,12 @@ export async function renderVideoFFmpeg(opts: FFmpegRenderOptions): Promise<stri
     const args: string[] = ["-hide_banner", "-loglevel", "warning", "-threads", "1"];
 
     for (let i = 0; i < scenes.length; i++) {
-      args.push("-framerate", String(fps), "-loop", "1", "-t", String(scenes[i].duration), "-i", imagePaths[i]);
+      const isVideo = scenes[i].type === "video";
+      args.push("-t", String(scenes[i].duration)); // limit to scene duration
+      if (!isVideo) {
+        args.push("-framerate", String(fps), "-loop", "1"); // still image looped
+      }
+      args.push("-i", imagePaths[i]);
     }
 
     let nextInputIdx = scenes.length;
@@ -122,11 +128,16 @@ export async function renderVideoFFmpeg(opts: FFmpegRenderOptions): Promise<stri
     const fontOpt = FONT_PATH ? `fontfile=${FONT_PATH}:` : "";
 
     for (let i = 0; i < scenes.length; i++) {
-      const { caption } = scenes[i];
+      const { caption, type = "image" } = scenes[i];
+
+      // For video clips: trim to duration + reset pts. For images: already loop-limited.
+      const trimPart = type === "video"
+        ? `trim=duration=${scenes[i].duration},setpts=PTS-STARTPTS,`
+        : "";
 
       // Scale + crop + steady fps
       parts.push(
-        `[${i}:v]scale=${width}:${height}:force_original_aspect_ratio=increase,` +
+        `[${i}:v]${trimPart}scale=${width}:${height}:force_original_aspect_ratio=increase,` +
           `crop=${width}:${height},setsar=1,fps=${fps},format=yuv420p[sc${i}]`,
       );
 

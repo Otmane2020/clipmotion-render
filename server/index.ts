@@ -360,12 +360,11 @@ function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
             : Promise.resolve(null),
         ]);
 
-        // ── 3. Build clips ──
+        // ── 3. Build clips (real video URLs — no Chrome, FFmpeg handles mp4 natively) ──
         const captions = splitScriptToScenes(script || title, NUM_SCENES);
-        // Force image type (never video) to avoid Chrome video decoder memory (~200MB per clip)
         const clips = aiScenes?.scenes ?? stockAssets.videoClips.map((v, i) => ({
-          url: v.thumb || v.url,
-          type: "image" as const,
+          url: v.url,
+          type: v.type,   // "video" for Pixabay/Pexels clips, "image" for Unsplash fallback
           caption: captions[i] || title,
           durationInFrames: sceneDuration,
           panDirection: (["zoom-in", "left", "zoom-out"] as const)[i % 3],
