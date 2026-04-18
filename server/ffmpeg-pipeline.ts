@@ -50,22 +50,6 @@ function escapeDrawtext(text: string): string {
     .slice(0, 60);
 }
 
-function zoompanFilter(dir: string, frames: number, w: number, h: number): string {
-  const size = `${w}x${h}`;
-  const D = frames;
-  switch (dir) {
-    case "zoom-in":
-      return `zoompan=z='min(zoom+0.0015,1.5)':x='(iw-iw/zoom)/2':y='(ih-ih/zoom)/2':d=${D}:s=${size}`;
-    case "zoom-out":
-      return `zoompan=z='if(lte(zoom,1.0),1.5,max(1.001,zoom-0.0015))':x='(iw-iw/zoom)/2':y='(ih-ih/zoom)/2':d=${D}:s=${size}`;
-    case "left":
-      return `zoompan=z='1.3':x='(iw-iw/zoom)*on/${D}':y='(ih-ih/zoom)/2':d=${D}:s=${size}`;
-    case "right":
-      return `zoompan=z='1.3':x='(iw-iw/zoom)*(1-on/${D})':y='(ih-ih/zoom)/2':d=${D}:s=${size}`;
-    default:
-      return `zoompan=z='1.0':x='0':y='0':d=${D}:s=${size}`;
-  }
-}
 
 export async function renderVideoFFmpeg(opts: FFmpegRenderOptions): Promise<string> {
   const {
@@ -131,40 +115,53 @@ export async function renderVideoFFmpeg(opts: FFmpegRenderOptions): Promise<stri
     if (voicePath) args.push("-i", voicePath);
 
     // ── 4. filter_complex ────────────────────────────────────────────────────
+    // Uses xfade crossfade transitions instead of zoompan — renders in seconds vs minutes
     const parts: string[] = [];
-    const totalDuration = scenes.reduce((s, sc) => s + sc.duration, 0);
+    const FADE = 0.5; // crossfade duration in seconds
+    const totalDuration = scenes.reduce((s, sc) => s + sc.duration, 0) - FADE * (scenes.length - 1);
     const fontOpt = FONT_PATH ? `fontfile=${FONT_PATH}:` : "";
 
     for (let i = 0; i < scenes.length; i++) {
-      const { duration, caption, panDirection = "zoom-in" } = scenes[i];
-      const frames = Math.round(duration * fps);
+      const { caption } = scenes[i];
 
-      // Scale + crop to exact output dimensions
+      // Scale + crop + steady fps
       parts.push(
         `[${i}:v]scale=${width}:${height}:force_original_aspect_ratio=increase,` +
-          `crop=${width}:${height},setsar=1,fps=${fps}[sc${i}]`,
+          `crop=${width}:${height},setsar=1,fps=${fps},format=yuv420p[sc${i}]`,
       );
-
-      // Ken Burns effect
-      parts.push(`[sc${i}]${zoompanFilter(panDirection, frames, width, height)}[kb${i}]`);
 
       // Caption overlay
       if (caption) {
         const esc = escapeDrawtext(caption);
         parts.push(
-          `[kb${i}]drawtext=${fontOpt}` +
+          `[sc${i}]drawtext=${fontOpt}` +
             `text='${esc}':fontsize=38:fontcolor=white:` +
             `box=1:boxcolor=black@0.55:boxborderw=12:` +
             `x=(w-text_w)/2:y=h-text_h-50[out${i}]`,
         );
       } else {
-        parts.push(`[kb${i}]null[out${i}]`);
+        parts.push(`[sc${i}]copy[out${i}]`);
       }
     }
 
-    // Concat scenes
-    const concatIn = scenes.map((_, i) => `[out${i}]`).join("");
-    parts.push(`${concatIn}concat=n=${scenes.length}:v=1:a=0,format=yuv420p[vout]`);
+    // Chain xfade transitions between scenes
+    let lastLabel = "[out0]";
+    let xfadeOffset = scenes[0].duration - FADE;
+    for (let i = 1; i < scenes.length; i++) {
+      const nextLabel = i === scenes.length - 1 ? "[xfinal]" : `[xf${i}]`;
+      parts.push(
+        `${lastLabel}[out${i}]xfade=transition=fade:duration=${FADE}:offset=${xfadeOffset.toFixed(3)}${nextLabel}`,
+      );
+      lastLabel = nextLabel;
+      xfadeOffset += scenes[i].duration - FADE;
+    }
+
+    // Single scene: no xfade needed, just rename
+    if (scenes.length === 1) {
+      parts.push(`[out0]copy[xfinal]`);
+    }
+
+    parts.push(`[xfinal]format=yuv420p[vout]`);
 
     // Audio mixing
     let audioMap: string | undefined;
