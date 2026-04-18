@@ -326,8 +326,10 @@ function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
     const { width, height } = FORMAT_MAP[videoFormat] ?? FORMAT_MAP.landscape;
     const crf = CRF_MAP[quality] ?? 16;
 
-    const jobPlaceholderId = `promo-${Date.now()}`;
-    res.status(202).json({ jobId: jobPlaceholderId, status: "generating", generationId, videoFormat, width, height });
+    const promoJobId = randomUUID();
+    const promoDummyData = { compositionId: "FFmpegRender", inputProps: {}, webhookUrl };
+    queue.jobs.set(promoJobId, { status: "in-progress", progress: 0.05, cancel: () => {}, data: promoDummyData });
+    res.status(202).json({ jobId: promoJobId, status: "generating", generationId, videoFormat, width, height });
 
     setImmediate(async () => {
       try {
@@ -382,8 +384,6 @@ function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
           panDirection: (c.panDirection as any) ?? "zoom-in",
         }));
 
-        const promoJobId = randomUUID();
-        const promoDummyData = { compositionId: "FFmpegRender", inputProps: {}, webhookUrl };
         queue.jobs.set(promoJobId, { status: "in-progress", progress: 0.5, cancel: () => {}, data: promoDummyData });
 
         const outputPath = await renderVideoFFmpeg({
