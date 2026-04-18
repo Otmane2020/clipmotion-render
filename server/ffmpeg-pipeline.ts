@@ -81,7 +81,8 @@ export async function renderVideoFFmpeg(opts: FFmpegRenderOptions): Promise<stri
       if (scene.localPath) {
         imagePaths.push(scene.localPath);
       } else if (scene.url) {
-        const dest = path.join(tmpDir, `img-${i}.jpg`);
+        const ext = scene.type === "video" ? "mp4" : "jpg";
+        const dest = path.join(tmpDir, `scene-${i}.${ext}`);
         await downloadToFile(scene.url, dest);
         imagePaths.push(dest);
       } else {
@@ -109,7 +110,7 @@ export async function renderVideoFFmpeg(opts: FFmpegRenderOptions): Promise<stri
       const isVideo = scenes[i].type === "video";
       args.push("-t", String(scenes[i].duration)); // limit to scene duration
       if (!isVideo) {
-        args.push("-framerate", String(fps), "-loop", "1"); // still image looped
+        args.push("-r", String(fps), "-loop", "1"); // still image looped
       }
       args.push("-i", imagePaths[i]);
     }
