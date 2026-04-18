@@ -27,16 +27,16 @@ const SAPI_VOICES: Record<string, string> = {
   "de-female":    "Microsoft Zira Desktop",
 };
 
-// espeak-ng voices (Linux)
+// espeak-ng voices (Linux) — use variant +f3/+m3 for slightly less robotic sound
 const ESPEAK_VOICES: Record<string, string> = {
-  "fr-female":    "fr",
-  "fr-male":      "fr",
-  "en-female":    "en",
-  "en-male":      "en",
-  "en-female-2":  "en",
-  "en-male-calm": "en",
-  "es-female":    "es",
-  "de-female":    "de",
+  "fr-female":    "fr+f3",
+  "fr-male":      "fr+m3",
+  "en-female":    "en+f3",
+  "en-male":      "en+m3",
+  "en-female-2":  "en+f4",
+  "en-male-calm": "en+m4",
+  "es-female":    "es+f3",
+  "de-female":    "de+f3",
 };
 
 export const VOICES = EDGE_VOICES;
@@ -65,7 +65,7 @@ function cleanup(...paths: string[]) {
 }
 
 // ─── Method 1: Edge-TTS (neural, internet required) ──────────────────────────
-async function tryEdgeTTS(script: string, voiceName: string, mp3Path: string, timeoutMs = 12000): Promise<boolean> {
+async function tryEdgeTTS(script: string, voiceName: string, mp3Path: string, timeoutMs = 25000): Promise<boolean> {
   const tmpPath = mp3Path + ".tmp";
   cleanup(tmpPath);
   try {
@@ -127,7 +127,7 @@ function tryWindowsSAPI(script: string, voiceName: string, mp3Path: string, rate
 }
 
 // ─── Method 3: espeak-ng (offline, Linux) ────────────────────────────────────
-function tryEspeakNg(script: string, lang: string, mp3Path: string, speed = 150): boolean {
+function tryEspeakNg(script: string, lang: string, mp3Path: string, speed = 135): boolean {
   if (process.platform === "win32") return false;
   const wavPath = mp3Path + ".espeak.wav";
   const txtPath = mp3Path + ".txt";

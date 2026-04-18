@@ -67,7 +67,7 @@ function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
 
   // ── Health ──────────────────────────────────────────────────────────────────
   app.get("/health", (_req, res) => {
-    res.json({ status: "ok", version: "3.2", hfConfigured: !!HF_TOKEN });
+    res.json({ status: "ok", version: "3.3", hfConfigured: !!HF_TOKEN });
   });
 
   app.get("/compositions", (_req, res) => {

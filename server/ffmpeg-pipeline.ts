@@ -122,25 +122,56 @@ export async function renderVideoFFmpeg(opts: FFmpegRenderOptions): Promise<stri
     if (voicePath) args.push("-i", voicePath);
 
     // ── 4. filter_complex ────────────────────────────────────────────────────
-    // Uses xfade crossfade transitions instead of zoompan — renders in seconds vs minutes
     const parts: string[] = [];
     const FADE = 0.5; // crossfade duration in seconds
     const totalDuration = scenes.reduce((s, sc) => s + sc.duration, 0) - FADE * (scenes.length - 1);
     const fontOpt = FONT_PATH ? `fontfile=${FONT_PATH}:` : "";
 
+    // Overscan scale for Ken Burns zoompan (images need 15% extra pixels to pan/zoom within)
+    const KB_SCALE = 1.15;
+    const oW = Math.round(width * KB_SCALE);
+    const oH = Math.round(height * KB_SCALE);
+
     for (let i = 0; i < scenes.length; i++) {
-      const { caption, type = "image" } = scenes[i];
+      const { caption, type = "image", panDirection = "none" } = scenes[i];
+      const dFrames = Math.max(2, Math.round(scenes[i].duration * fps));
 
       // For video clips: trim to duration + reset pts. For images: already loop-limited.
       const trimPart = type === "video"
         ? `trim=duration=${scenes[i].duration},setpts=PTS-STARTPTS,`
         : "";
 
-      // Scale + crop + steady fps
-      parts.push(
-        `[${i}:v]${trimPart}scale=${width}:${height}:force_original_aspect_ratio=increase,` +
-          `crop=${width}:${height},setsar=1,fps=${fps},format=yuv420p[sc${i}]`,
-      );
+      // Ken Burns zoompan for still images — makes static photos feel cinematic
+      let kbFilter = "";
+      if (type === "image" && panDirection !== "none") {
+        const step = (0.15 / dFrames).toFixed(6);
+        const cx = "iw/2-(iw/zoom/2)";
+        const cy = "ih/2-(ih/zoom/2)";
+        const zpBase = `s=${width}x${height}:fps=${fps}`;
+        if (panDirection === "zoom-in") {
+          kbFilter = `,zoompan=z='if(eq(on,1),1.0,min(zoom+${step},1.15))':d=${dFrames}:x='${cx}':y='${cy}':${zpBase}`;
+        } else if (panDirection === "zoom-out") {
+          kbFilter = `,zoompan=z='if(eq(on,1),1.15,max(zoom-${step},1.0))':d=${dFrames}:x='${cx}':y='${cy}':${zpBase}`;
+        } else if (panDirection === "left") {
+          kbFilter = `,zoompan=z='1.1':d=${dFrames}:x='(iw-iw/zoom)*(on-1.0)/${dFrames}':y='${cy}':${zpBase}`;
+        } else if (panDirection === "right") {
+          kbFilter = `,zoompan=z='1.1':d=${dFrames}:x='(iw-iw/zoom)*(1.0-(on-1.0)/${dFrames})':y='${cy}':${zpBase}`;
+        }
+      }
+
+      if (kbFilter) {
+        // Overscan → zoompan (Ken Burns) → yuv420p
+        parts.push(
+          `[${i}:v]${trimPart}scale=${oW}:${oH}:force_original_aspect_ratio=increase,` +
+            `crop=${oW}:${oH},setsar=1${kbFilter},format=yuv420p[sc${i}]`,
+        );
+      } else {
+        // Static (video clips or panDirection=none)
+        parts.push(
+          `[${i}:v]${trimPart}scale=${width}:${height}:force_original_aspect_ratio=increase,` +
+            `crop=${width}:${height},setsar=1,fps=${fps},format=yuv420p[sc${i}]`,
+        );
+      }
 
       // Caption overlay
       if (caption) {
