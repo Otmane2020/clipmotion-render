@@ -241,6 +241,8 @@ export async function renderVideoFFmpeg(opts: FFmpegRenderOptions): Promise<stri
     if (audioMap) args.push("-map", audioMap);
 
     args.push("-c:v", "libx264", "-crf", String(crf), "-preset", "fast");
+    // Explicit color metadata — Chrome refuses to play h264 with color_range=unknown
+    args.push("-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-color_range", "tv");
     if (audioMap) args.push("-c:a", "aac", "-b:a", "128k");
     args.push("-movflags", "+faststart", "-y", outputPath);
 
